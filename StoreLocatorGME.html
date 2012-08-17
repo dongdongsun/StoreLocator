@@ -1,0 +1,187 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <style>
+      html, body, #map_canvas {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+    </style>
+	<script type="text/javascript"	src="http://maps.googleapis.com/maps/api/js?key=AIzaSyDYlfqxc8jRB8oaoPkT9sY8uIc1d0axdfY&sensor=false">
+	</script>
+  </head>
+
+  <body>
+	<script>
+	var map;
+	var geocoder;
+	var marker;
+	var clientId ='732115288096.apps.googleusercontent.com'; //dongsun
+	var apiKey='AIzaSyDYlfqxc8jRB8oaoPkT9sY8uIc1d0axdfY'; //dongsun
+	// var tableId='1_hWO4Vk0V3HME7SnmEFGLPS1P5wT7kGkQxBcxKA'; //dongsun private fustiontables table 
+	var mapId = '10258059232491603613-13039161840089831357';
+	//var tableId = '10258059232491603613-02675103680149685614'; //map engine table id
+	var tableId	='geo-spatial-data-api.test.australianStores';  //team test table in GME
+	//var scopes = 'https://www.googleapis.com/auth/fusiontables';
+	var scopes = 'https://www.googleapis.com/auth/earthbuilder.readonly';
+	var latlng;
+	var markersArray = [];
+	var markerBounds = new google.maps.LatLngBounds();
+	var addressLatLng;
+	
+   function handleClientLoad() {
+      gapi.client.setApiKey(apiKey);
+      window.setTimeout(checkAuth,1);
+     }
+
+     function checkAuth() {
+       gapi.auth.authorize({client_id: clientId, scope: scopes, immediate: true}, handleAuthResult);
+     }
+
+     function handleAuthResult(authResult) {
+	// 	console.log(authResult);  //returns access token with expire time setting 3600
+       var authorizeButton = document.getElementById('authorize-button');
+	   console.log(authResult);
+       if (authResult && !authResult.error) {
+         authorizeButton.style.visibility = 'hidden';
+       } else {
+         authorizeButton.style.visibility = '';
+         authorizeButton.onclick = handleAuthClick;
+       }
+     }
+
+	 function handleAuthClick(event) {
+        gapi.auth.authorize({client_id: clientId, scope: scopes, immediate: false}, handleAuthResult);
+        return false;
+      }
+	
+	function handleGMEQueryResponse(response) {
+	   if (!response.code) {
+			console.log(response);	
+			deleteOverlays();
+			if (response && response.result && response.result.features) {
+			    for(var i = 0; i < response.result.features.length;i++){
+					var lat= parseFloat(response.result.features[i].geometry.coordinates[0]);
+					var lng= parseFloat(response.result.features[i].geometry.coordinates[1]);
+					var latlng =  new google.maps.LatLng(lng,lat);
+						var marker = new google.maps.Marker({
+						    position: latlng,
+						    map: map
+						  });	
+						 markersArray.push(marker);
+						 markerBounds.extend(latlng);
+					}
+					map.fitBounds(markerBounds);
+			    }
+			} 
+	 }
+	
+	function addMap(){		
+		homeLatLng = new google.maps.LatLng(37.4218, -122.0840);  //home lat long
+
+	    var myOptions = {
+	        center: homeLatLng,
+	        zoom: 11,
+	        mapTypeId: google.maps.MapTypeId.ROADMAP
+	    };
+
+	    //init map obj        
+	    map = new google.maps.Map(document.getElementById("map_canvas"),  myOptions);
+		geocoder = new google.maps.Geocoder();
+	}
+	
+	function getPlaces() {
+	   try {
+			var queryRadius = document.getElementById('radius').value;
+			console.log(queryRadius);
+			gapi.client.load('mapsengine', 'v1beta2', function() {	
+				var request = gapi.client.mapsengine.tables.features.list(
+						{
+							'tableId':tableId,
+							'sq':'ST_DISTANCE(location, ST_POINT('+addressLatLng.Ya+','+addressLatLng.Xa+')) < '+queryRadius
+						});
+				request.execute(handleGMEQueryResponse);
+	        });
+	    }     
+	    catch(err){
+	        txt="Error in getMapInfo.\n\n";
+	        txt+="Error message: " + err.message + "\n\n";
+	        alert(txt);
+	    }
+  }
+
+	function deleteOverlays() {
+	  if (markersArray) {
+	    for (i in markersArray) {
+	      markersArray[i].setMap(null);
+	    }
+	    markersArray.length = 0;
+	  }
+	}
+
+	function codeAddress() {
+ 	   var address = document.getElementById("address").value;
+	   try {
+	      geocoder.geocode( {'address': address}, function(results, status) {
+	      if (status == google.maps.GeocoderStatus.OK) {
+				markerBounds = null;
+			 // center map, add marker, and add neareast stores 
+				  addressLatLng = results[0].geometry.location;
+		          map.setCenter(latlng);
+		          if (marker == null) {
+		            marker = new google.maps.Marker({
+		                position: addressLatLng,
+		                map: map,
+						icon: 'http://maps.google.com/intl/en_us/mapfiles/ms/micons/yellow-dot.png'
+		            });
+		          }
+
+		          else {
+		          	marker.setPosition(results[0].geometry.location);
+				  }
+				  markerBounds = new google.maps.LatLngBounds();
+				  markerBounds.extend(addressLatLng);
+				  map.setCenter(addressLatLng);
+		//		  map.fitBounds(markerBounds);
+		//	     innerHTMLContent = '<div id ="infowindow"><p id ="infoWindowText">'+ results[0].formatted_address+ '</p>\n' +'<div>';
+        // 		 infowindow.setContent(innerHTMLContent);
+		//         infowindow.open(map, marker);
+
+		         // OAuth 2 and store locator  
+				 if (document.getElementById('authorize-button').style.visibility == 'hidden') 
+				 	getPlaces();
+				 else 
+					alert("Please authorize access to fusion table.");
+		    }
+			else {
+	          alert("Geocode was not successful for the following reason: " + status);
+	        }
+	      });
+	    }     
+	    catch(err){
+	        txt="Error in Geocoding.\n\n";
+	        txt+="Error message: " + err.message + "\n\n";
+	        alert(txt);
+	    }
+  }
+ 	google.maps.event.addDomListener(window, 'load', addMap);
+    </script>
+  	<script src="https://apis.google.com/js/client.js?onload=handleClientLoad"></script>
+
+     <div id="map_canvas" style="width:100%; height:80%"></div>  
+  	 <div id="input_canvas" >
+		 <button id="authorize-button" style="visibility: hidden">Authorize</button>
+		 <br>
+		 <br>
+		 Location <input id="address" type="textbox" size ="50" value="Palm Beach Sea Plane Base, Sydney NSW 2000, Australia">
+		 Distance <input id="radius" type="textbox" size ="15" value="50000"> (In Meters)
+	     <input type="button" value="getMapInfo" onclick="codeAddress()">
+	
+	
+	 </div>	
+  </body>
+</html>

@@ -1,0 +1,180 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <style>
+      html, body, #map_canvas {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+    </style>
+	<script type="text/javascript"	src="http://maps.googleapis.com/maps/api/js?key=AIzaSyDYlfqxc8jRB8oaoPkT9sY8uIc1d0axdfY&sensor=false">
+	</script>
+  </head>
+
+  <body>
+	<script>
+	var map;
+	var geocoder;
+	var marker;
+	var clientId ='732115288096.apps.googleusercontent.com'; //dongsun
+	var apiKey='AIzaSyDYlfqxc8jRB8oaoPkT9sY8uIc1d0axdfY'; //dongsun
+	var tableId='1_hWO4Vk0V3HME7SnmEFGLPS1P5wT7kGkQxBcxKA'; //dongsun private table
+	var scopes = 'https://www.googleapis.com/auth/fusiontables';
+	var latlng;
+	var markersArray = [];
+	var markerBounds = new google.maps.LatLngBounds();
+
+	
+   function handleClientLoad() {
+      gapi.client.setApiKey(apiKey);
+      window.setTimeout(checkAuth,1);
+     }
+
+     function checkAuth() {
+       gapi.auth.authorize({client_id: clientId, scope: scopes, immediate: true}, handleAuthResult);
+     }
+
+     function handleAuthResult(authResult) {
+	// 	console.log(authResult);  //returns access token with expire time setting 3600
+       var authorizeButton = document.getElementById('authorize-button');
+       if (authResult && !authResult.error) {
+         authorizeButton.style.visibility = 'hidden';
+       } else {
+         authorizeButton.style.visibility = '';
+         authorizeButton.onclick = handleAuthClick;
+       }
+     }
+
+	 function handleAuthClick(event) {
+        gapi.auth.authorize({client_id: clientId, scope: scopes, immediate: false}, handleAuthResult);
+        return false;
+      }
+
+	 function getPlaces(){
+		var queryRadius = document.getElementById('radius').value;
+		console.log(queryRadius);
+		gapi.client.load('fusiontables', 'v1', function() {					
+          var request = gapi.client.fusiontables.query.sql(
+	//		{'sql': 'select * from '+ tableId +' where ST_INTERSECTS(LLLocation,CIRCLE(LATLNG(37.4218,-122.0840),5000))'}
+			{'sql': 'select PlanceName,PhoneNumber,Address,LLLocation from '+ tableId +' where ST_INTERSECTS(LLLocation,CIRCLE(LATLNG'+addressLatLng.toString()+','+queryRadius+'))'}
+	 	  );
+          request.execute(handleFTQueryResponse);
+        });
+     }
+	
+	function handleFTQueryResponse(response) {
+	   if (!response.code) {
+		console.log(response);	
+		deleteOverlays();
+		if (response && response.rows && response.rows.length) {
+		    for(var i = 0; i < response.rows.length;i++){
+				var item = response.rows[i]
+				for (var j = 0; j < item.length;j++){
+					var lat= parseFloat(item[3].split(' ')[0]);
+					var lng = parseFloat(item[3].split(' ')[1]);
+					var latlng =  new google.maps.LatLng(lat,lng);
+					var marker = new google.maps.Marker({
+					    position: latlng,
+					    map: map,
+					    title: item[0]
+					  });	
+					 markersArray.push(marker);
+					 markerBounds.extend(latlng);
+				}
+				map.fitBounds(markerBounds);
+		    }
+		} else {
+		}
+	    } else {
+	    }
+	 }
+	
+	function addMap(){		
+		homeLatLng = new google.maps.LatLng(37.4218, -122.0840);  //home lat long
+
+	    var myOptions = {
+	        center: homeLatLng,
+	        zoom: 11,
+	        mapTypeId: google.maps.MapTypeId.ROADMAP
+	    };
+
+	    //init map obj        
+	    map = new google.maps.Map(document.getElementById("map_canvas"),  myOptions);
+	    trafficLayer = new google.maps.TrafficLayer();
+	    trafficLayer.setMap(map);
+	 	geocoder = new google.maps.Geocoder();
+	    infowindow = new google.maps.InfoWindow();
+	}
+	
+	function deleteOverlays() {
+	  if (markersArray) {
+	    for (i in markersArray) {
+	      markersArray[i].setMap(null);
+	    }
+	    markersArray.length = 0;
+	  }
+	}
+	
+	function codeAddress() {
+ 	   var address = document.getElementById("address").value;
+	   try {
+	      geocoder.geocode( {'address': address}, function(results, status) {
+	      if (status == google.maps.GeocoderStatus.OK) {
+				markerBounds = null;
+			 // center map, add marker, and add neareast stores 
+				  addressLatLng = results[0].geometry.location;
+		          map.setCenter(latlng);
+		          if (marker == null) {
+		            marker = new google.maps.Marker({
+		                position: addressLatLng,
+		                map: map,
+						icon: 'http://maps.google.com/intl/en_us/mapfiles/ms/micons/yellow-dot.png'
+		            });
+		          }
+		
+		          else {
+		          	marker.setPosition(results[0].geometry.location);
+				  }
+				  markerBounds = new google.maps.LatLngBounds();
+				  markerBounds.extend(addressLatLng);
+				  map.setCenter(addressLatLng);
+		//		  map.fitBounds(markerBounds);
+		//	     innerHTMLContent = '<div id ="infowindow"><p id ="infoWindowText">'+ results[0].formatted_address+ '</p>\n' +'<div>';
+        // 		 infowindow.setContent(innerHTMLContent);
+		//         infowindow.open(map, marker);
+				  
+		         // OAuth 2 and store locator  
+				 if (document.getElementById('authorize-button').style.visibility == 'hidden') 
+				 	getPlaces();
+				 else 
+					alert("Please authorize access to fusion table.");
+		    }
+			else {
+	          alert("Geocode was not successful for the following reason: " + status);
+	        }
+	      });
+	    }     
+	    catch(err){
+	        txt="Error in Geocoding.\n\n";
+	        txt+="Error message: " + err.message + "\n\n";
+	        alert(txt);
+	    }
+  }
+
+ 	google.maps.event.addDomListener(window, 'load', addMap);
+    </script>
+  	<script src="https://apis.google.com/js/client.js?onload=handleClientLoad"></script>
+     <div id="map_canvas" style="width:100%; height:80%"></div>  
+  	 <div id="input_canvas" >
+		 <button id="authorize-button" style="visibility: hidden">Authorize</button>
+		 <br>
+		 Location <input id="address" type="textbox" size ="50" value="349 N. Whisman Rd., 94043">
+		 Distance <input id="radius" type="textbox" size ="15" value="5000"> (In Meters)
+	     <input type="button" value="Find Places" onclick="codeAddress()">
+	 </div>	
+  </body>
+</html>
